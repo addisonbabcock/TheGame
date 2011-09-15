@@ -1,0 +1,44 @@
+AREA 1 FOrest:
+	-wildlife
+		-Bear
+		-wolves
+		-cougar
+		-Moose
+		-killer plants
+
+Area 2 Badlands:
+		-Standards skeletons
+		-close range (melee)
+		-medium range(throws rocks)
+		-tank-ish (beats you to death)
+		-Explosive skeleton
+	-wildlife
+		-hyena's (laughing at you failures, pissing you off)
+		-smaller death worms
+		-dinosaurs of sorts(mechanaized and some not)
+
+Area 3 Geartown
+	-enemies
+		-everthing mecanical we got, just upgraded a bit
+
+Mini/Bosses:
+
+Area1: 
+Mini:
+	Robotic bear
+Boss:
+	Grim Robo Reaper
+
+Area2:
+Mini:
+	Robotic T-rex
+Boss:	
+	Death Worm
+
+Area3:
+Mini:
+	Grim Robo Reaper v2
+boss:
+	Mr.G.Neric (final boss)
+
+
