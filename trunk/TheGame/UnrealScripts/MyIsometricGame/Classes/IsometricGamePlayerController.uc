@@ -30,10 +30,38 @@ var bool bRightMousePressed; //Initialize this function in StartFire and off in 
 var bool bPawnNearDestination; //This indicates if pawn is within acceptable offset of destination to stop moving.
 var float DistanceRemaining; //This is the calculated distance the pawn has left to get to MouseHitWorldLocation.
 
+/*****************************************************************
+ *
+ *  PATH FINDING
+ *
+ * The following variables where taken as is from AiController.uc
+ *
+ */
+var Actor       ScriptedMoveTarget;
+/** Route from last scripted action; if valid, sets ScriptedMoveTarget with the points along the route */
+var Route       ScriptedRoute;
+/** if ScriptedRoute is valid, the index of the current point we're moving to */
+var int         ScriptedRouteIndex;
+/*****************************************************************/
+
+/** Temp Destination for navmesh destination */
+var()   Vector  TempDest;
+var bool GotToDest;
+var Vector  NavigationDestination;
+var Vector2D  DistanceCheck;
+/*****************************************************************/
+var Actor  Target;
+var bool  CurrentTargetIsReachable;
+
+var class FollowerPawnClass;
+var Pawn        Followers[3];
+
+
 DefaultProperties
 {
 	CameraClass=class'IsometricCamera'
 	InputClass=class'MouseInterfacePlayerInput'
+	FollowerPawnClass=class'MyIsometricGame.FollowerPawn'
 }
 
 simulated event PostBeginPlay()
@@ -178,7 +206,7 @@ exec function StopFire(optional byte FireModeNum )
                 else
                 {
                         //fire up pathfinding
-                        //ExecutePathFindMove();
+                        ExecutePathFindMove();
                 }
         }
         else
@@ -203,9 +231,16 @@ exec function StopFire(optional byte FireModeNum )
  ******************************************************************/
 function MovePawnToDestination()
 {
+        local int i;
+
         `Log("Moving to location without pathfinding!");
         SetDestinationPosition(MouseHitWorldLocation);
         PushState('MoveMouseClick');
+
+        for(i = 0; i < 3; i++)
+        {
+                FollowerAIController(Followers[i].Controller).SetOrders('Follow', self);
+        }
 }
 
 /******************************************************************
@@ -349,5 +384,206 @@ Begin:
         {
                 PopState();
         }
+}
+
+/******************************************************************
+ *
+ *  TUTORIAL FUNCTION
+ *
+ *  ExecutePathFindMove makes the call to the FindPathTo so that a list
+ *  of possible PathNodes will be cached in RouteCache.
+ *
+ ******************************************************************/
+function ExecutePathFindMove()
+{
+	ScriptedMoveTarget = FindPathTo(GetDestinationPosition());
+	`Log("Route length is"@RouteCache.Length);
+	if( RouteCache.Length > 0 )
+	{
+		`Log("Launching PathFind");
+		PushState('PathFind');
+	}
+	else
+	{
+		//Lets find path with navmesh
+		`Log("Launching PathFind with navmesh");
+		PushState('NavMeshSeeking');
+	}
+}
+
+/******************************************************************
+ *
+ *  TUTORIAL STATE (PathFind)
+ *
+ *  This is almost the same if not identical to AiController
+ *  ScriptedRouteMove. For each route in the RouteCache (initialized
+ *  with a call to FindPathTo(destVector), push a state that will
+ *  make the pawn goto a location determined by a PathNode location.
+ *  You will need to have multiple PathNodes on your map for this to
+ *  work properly. This does not use NavigationMeshes, only Linked
+ *  PathNodes. PathNodes are manually placed. NavigationMeshes uses
+ *  Pylons and other type of actors, so the two systems are different.
+ *
+ ******************************************************************/
+state PathFind
+{
+Begin:
+        if( RouteCache.Length > 0 )
+        {
+                //for each route in routecache push a ScriptedMove state.
+                ScriptedRouteIndex = 0;
+                while (Pawn != None && ScriptedRouteIndex < RouteCache.length && ScriptedRouteIndex >= 0)
+                {
+                        //Get the next route (PathNode actor) as next MoveTarget.
+                        ScriptedMoveTarget = RouteCache[ScriptedRouteIndex];
+                        if (ScriptedMoveTarget != None)
+                        {
+                                `Log("ScriptedRoute is launching ScriptedMove index:"@ScriptedRouteIndex);
+                                PushState('ScriptedMove');
+                        }
+                        else
+                        {
+                                `Log("ScriptedMoveTarget is invalid for index:"@ScriptedRouteIndex);
+                        }
+                        ScriptedRouteIndex++;
+                }
+                PopState();
+        }
+}
+
+/******************************************************************
+ *
+ *  TUTORIAL STATE (ScriptedMove)
+ *
+ *  This is the state that is put on the state stack for each PathNode
+ *  found when pathfinding. So if you click on a destination and it has
+ *  3 PathNode on its route, this state will be stacked 3 times for
+ *  moving to a destination. The destination actor represented
+ *  by ScriptedMoveTarget is the PathNode.
+ *
+ ******************************************************************/
+state ScriptedMove
+{
+Begin:
+        while(ScriptedMoveTarget != none && Pawn != none && !Pawn.ReachedDestination(ScriptedMoveTarget))
+        {
+                // check to see if it is directly reachable
+                if (ActorReachable(ScriptedMoveTarget))
+                {
+                        // then move directly to the actor
+                        MoveToward(ScriptedMoveTarget, ScriptedMoveTarget);
+                        SetDestinationPosition(ScriptedMoveTarget.Location);
+                }
+                else
+                {
+                        // attempt to find a path to the target
+                        MoveTarget = FindPathToward(ScriptedMoveTarget);
+                        if (MoveTarget != None)
+                        {
+                                // move to the first node on the path
+                                MoveToward(MoveTarget, MoveTarget);
+                                SetDestinationPosition(MoveTarget.Location);
+                        }
+                        else
+                        {
+                                // abort the move
+                                `warn("Failed to find path to"@ScriptedMoveTarget);
+                                ScriptedMoveTarget = None;
+                        }
+                }
+        }
+        PopState();
+}
+
+/////////////// NAVMESH PATHFINDING ///////////////
+
+//Overwrite AIController's ScriptedMove state to make use of the NavigationHandle instead of the old way
+state NavMeshSeeking
+{
+        function bool FindNavMeshPath()
+        {
+                // Clear cache and constraints (ignore recycling for the moment)
+                NavigationHandle.PathConstraintList = none;
+                NavigationHandle.PathGoalList = none;
+
+                // Create constraints
+                class'NavMeshPath_Toward'.static.TowardPoint( NavigationHandle, NavigationDestination );
+                class'NavMeshGoal_At'.static.AtLocation( NavigationHandle, NavigationDestination, 50, );
+
+                // Find path
+                return NavigationHandle.FindPath();
+        }
+
+        Begin:
+                `log("BEGIN STATE SCRIPTEDMOVE");
+                // while we have a valid pawn and move target, and
+                // we haven't reached the target yet
+                NavigationDestination = GetDestinationPosition();
+
+                if( FindNavMeshPath() )
+                {
+                        NavigationHandle.SetFinalDestination(NavigationDestination);
+                        `log("FindNavMeshPath returned TRUE");
+                        FlushPersistentDebugLines();
+                        NavigationHandle.DrawPathCache(,TRUE);
+
+                        //!Pawn.ReachedPoint here, i do not know how to handle second param, this makes the pawn
+                        //stop at the first navmesh patch
+                        `Log("GetDestinationPosition before navigation (destination)"@NavigationDestination);
+                        while( Pawn != None && !Pawn.ReachedPoint(NavigationDestination, None) )
+                        {
+                                if( NavigationHandle.PointReachable( NavigationDestination ) )
+                                {
+                                        // then move directly to the actor
+                                        MoveTo( NavigationDestination, None, , true );
+                                        `Log("Point is reachable");
+                                }
+                                else
+                                {
+                                        `Log("Point is not reachable");
+                                        // move to the first node on the path
+                                        if( NavigationHandle.GetNextMoveLocation( TempDest, Pawn.GetCollisionRadius()) )
+                                        {
+                                                `Log("Got next move location in TempDest " @ TempDest);
+                                                // suggest move preparation will return TRUE when the edge's
+                                            // logic is getting the bot to the edge point
+                                                        // FALSE if we should run there ourselves
+                                                if (!NavigationHandle.SuggestMovePreparation( TempDest,self))
+                                                {
+                                                        `Log("SuggestMovePreparation in TempDest " @ TempDest);
+                                                        MoveTo( TempDest, None, , true );
+                                                }
+                                        }
+                                }
+                                DistanceCheck.X = NavigationDestination.X - Pawn.Location.X;
+                                DistanceCheck.Y = NavigationDestination.Y - Pawn.Location.Y;
+                                DistanceRemaining = Sqrt((DistanceCheck.X*DistanceCheck.X) + (DistanceCheck.Y*DistanceCheck.Y));
+                                `Log("distance from pawn"@Pawn.Location@" to location "@ NavigationDestination@" is "@DistanceRemaining );
+                                `Log("Is pawn valid ?" @Pawn);
+                                GotToDest = Pawn.ReachedPoint(NavigationDestination, None);
+                                `Log("Has pawn reached point ?"@GotToDest);
+
+                                if( DistanceRemaining < 15) break;
+                        }
+                }
+                else
+                {
+                        //give up because the nav mesh failed to find a path
+                        `warn("FindNavMeshPath failed to find a path to"@ScriptedMoveTarget);
+                        ScriptedMoveTarget = None;
+                }   
+
+        `log("POPPING STATE!");
+        Pawn.ZeroMovementVariables();
+        // return to the previous state
+        PopState();
+}
+
+function PlayerSpawned(NavigationPoint StartLocation)
+{
+	`Log("Follower is alive");
+	Followers[0] = Spawn(class'FollowerPawn',,, StartLocation.Location - vect(100,100,0), StartLocation.Rotation);
+	Followers[1] = Spawn(class'FollowerPawn',,, StartLocation.Location - vect(200,100,0), StartLocation.Rotation);
+	Followers[2] = Spawn(class'FollowerPawn',,, StartLocation.Location - vect(100,200,0), StartLocation.Rotation);
 }
 

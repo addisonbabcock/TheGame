@@ -37,6 +37,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="*\Classes\*.uc" />
+    <Compile Include="Classes\FollowerAIController.uc" />
+    <Compile Include="Classes\FollowerPawn.uc" />
     <Compile Include="Classes\IsometricCamera.uc" />
     <Compile Include="Classes\IsometricGameInfo.uc" />
     <Compile Include="Classes\IsometricGamePlayerController.uc" />
