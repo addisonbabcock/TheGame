@@ -27,6 +27,10 @@ var MeshMouseCursor MouseCursor; //Hold the 3d mouse cursor
 var float DeltaTimeAccumulated; //Accumulate time to check for mouse clicks
 var bool bLeftMousePressed; //Initialize this function in StartFire and off in StopFire
 var bool bRightMousePressed; //Initialize this function in StartFire and off in StopFire
+var bool forwardPressed;
+var bool backwardPressed;
+var bool leftPressed;
+var bool rightPressed;
 var bool bPawnNearDestination; //This indicates if pawn is within acceptable offset of destination to stop moving.
 var float DistanceRemaining; //This is the calculated distance the pawn has left to get to MouseHitWorldLocation.
 
@@ -71,6 +75,39 @@ simulated event PostBeginPlay()
 	MouseCursor = Spawn(class'MeshMouseCursor', self, 'marker');
 }
 
+/**
+ * RotBetweenVect
+ * 
+ * This function returns a rotator with pitch and yaw values which 
+ * would be needed to rotate the first passed vector to the second one
+ * 
+ * @param A - First vector
+ * @param B - Second vector
+ * @return DeltaRot - Pitch and Yaw rotation between vector A and B
+ */
+function Rotator RotBetweenVect(Vector A, Vector B)
+{
+	local Rotator DeltaRot;
+	local Vector  ATop, BTop;   //Top projections of the vectors
+	local Vector  ASide, BSide; //Side projections of the vectors
+ 
+	ATop = A;
+	BTop = B;
+	ATop.Z = 0;
+	BTop.Z = 0;
+ 
+	ASide = A;
+	BSide = B;
+	ASide.Y = 0;
+	BSide.Y = 0;
+ 
+	DeltaRot.Yaw = acos(Normal(ATop) dot Normal(BTop)) * RadToUnrRot;
+	DeltaRot.Pitch = acos(Normal(ASide) dot Normal(BSide)) * RadToUnrRot;
+	DeltaRot.Roll = 0;
+ 
+	return DeltaRot;
+}
+
 /******************************************************************
  *
  *  TUTORIAL FUNCTION
@@ -80,13 +117,67 @@ simulated event PostBeginPlay()
  ******************************************************************/
 event PlayerTick( float DeltaTime )
 {
+		local Vector playerPosition;
+		local float movementSpeed;
+		local Vector movementDirection;
+
+		local Rotator pointToMouse;
+		local Vector playerToMouse;
         super.PlayerTick(DeltaTime);
 
+		playerPosition = Pawn.Location;
+
         //Set the location of the 3d marker that moves with the mouse.
-        MouseCursor.SetLocation(MouseHitWorldLocation); 
+        MouseCursor.SetLocation(MouseHitWorldLocation);
+
+		playerToMouse = MouseCursor.Location - playerPosition;
+		pointToMouse.Pitch = 0;
+		pointToMouse.Roll = 0;
+		pointToMouse.Yaw = Atan (playerToMouse.Y / playerToMouse.X) * RadToUnrRot;
+
+		if (playerToMouse.X < 0 && playerToMouse.Y > 0)
+		{
+			pointToMouse.Yaw += 180 * DegToUnrRot;
+		}
+
+		if (playerToMouse.X < 0 && playerToMouse.Y < 0)
+		{
+			pointToMouse.Yaw += 180 * DegToUnrRot;
+		}
+
+		Pawn.SetRotation (pointToMouse);
+
+
+		movementSpeed = 500.0f * DeltaTime;
+
+		if (forwardPressed)
+		{
+			movementDirection.X += movementSpeed;
+		}
+
+		if (backwardPressed)
+		{
+			movementDirection.X -= movementSpeed;
+		}
+
+		if (leftPressed)
+		{
+			movementDirection.Y -= movementSpeed;
+		}
+
+		if (rightPressed)
+		{
+			movementDirection.Y += movementSpeed;
+		}
+
+		playerPosition += Normal (movementDirection) * movementSpeed;
+		Pawn.SetLocation (playerPosition);
+
+//		SetDestinationPosition(MouseHitWorldLocation);
+//		ExecutePathFindMove ();
 
         //We use the right mouse button to move, change it to suit your need !
-        if(bRightMousePressed)
+/*        if(bRightMousePressed)
         {
                 //accumulate the time for knowing how much time the button was pressed.
                 DeltaTimeAccumulated += DeltaTime;
@@ -115,7 +206,7 @@ event PlayerTick( float DeltaTime )
                                 GotoState('MoveMousePressedAndHold', 'Begin', false, true);
                         }
                 }
-        }
+        }*/
 
         //DumpStateStack();
 }
@@ -144,7 +235,7 @@ exec function PrevWeapon()
  ******************************************************************/
 exec function StartFire(optional byte FireModeNum)
 {
-        //Pop all states to get pawn in auto moving to mouse target location.
+/*        //Pop all states to get pawn in auto moving to mouse target location.
         PopState(true);
 
         //Set timer
@@ -162,7 +253,7 @@ exec function StartFire(optional byte FireModeNum)
 
         //comment these if not needed
         if(bLeftMousePressed) `Log("Left Mouse pressed");
-        if(bRightMousePressed) `Log("Right Mouse pressed");
+        if(bRightMousePressed) `Log("Right Mouse pressed");*/
 }
 
 /******************************************************************
@@ -180,7 +271,7 @@ exec function StartFire(optional byte FireModeNum)
  ******************************************************************/
 exec function StopFire(optional byte FireModeNum )
 {
-        `Log("delta accumulated"@DeltaTimeAccumulated);
+ /*       `Log("delta accumulated"@DeltaTimeAccumulated);
         //Un-Initialize mouse pressed over time.
         if(bLeftMousePressed && FireModeNum == 0)
         {
@@ -217,7 +308,55 @@ exec function StopFire(optional byte FireModeNum )
                 PopState();
         }
         //reset accumulated timer for mouse held button
-        DeltaTimeAccumulated = 0;
+        DeltaTimeAccumulated = 0;*/
+}
+
+exec function ForwardPushed ()
+{
+	`Log ("ForwardPushed!");
+	forwardPressed = true;
+}
+
+exec function ForwardReleased ()
+{
+	`Log ("ForwardReleased!");
+	forwardPressed = false;
+}
+
+exec function BackwardPushed ()
+{
+	`Log ("BackwardPushed!");
+	backwardPressed = true;
+}
+
+exec function BackwardReleased ()
+{
+	`Log ("BackwardReleased!");
+	backwardPressed = false;
+}
+
+exec function StrafeLeftPushed ()
+{
+	`Log ("StrafeLeftPushed!");
+	leftPressed = true;
+}
+
+exec function StrafeLeftReleased ()
+{
+	`Log ("StrafeLeftReleased!");
+	leftPressed = false;
+}
+
+exec function StrafeRightPushed ()
+{
+	`Log ("StrafeRightPushed!");
+	rightPressed = true;
+}
+
+exec function StrafeRightReleased ()
+{
+	`Log ("StrafeRightReleased!");
+	rightPressed = false;
 }
 
 /******************************************************************
